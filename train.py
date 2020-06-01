@@ -187,7 +187,7 @@ if hvd.rank() == 0:
     callbacks.append(tensorboard_cb)
     callbacks.append(checkpoint_cb)
 #================== Training ==================
-history = model.fit(train_set, steps_per_epoch= 256 // BATCH_SIZE, epochs=500,
+history = model.fit(train_set, steps_per_epoch= 128 // BATCH_SIZE, epochs=500,
           validation_data=val_set,
           validation_steps=800 // 4,
           callbacks=callbacks,
