@@ -9,6 +9,7 @@ import pickle
 #================ Environment variables ================
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+import tensorflow as tf
 from tensorflow import keras
 import horovod.tensorflow.keras as hvd
 #=================== Set up Horovod =================
