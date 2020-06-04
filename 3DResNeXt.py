@@ -21,7 +21,7 @@ from tensorflow.keras.regularizers import l2
 from tensorflow.keras.utils import convert_all_kernels_in_model
 from tensorflow.keras.utils import get_file
 from tensorflow.keras.utils import get_source_inputs
-from tensorflow.keras.applications.imagenet_utils import preprocess_input
+from tensorflow.keras.applications.imagenet_utils import _obtain_input_shape
 import tensorflow.keras.backend as K
 
 CIFAR_TH_WEIGHTS_PATH = ''
@@ -97,7 +97,7 @@ def ResNext(input_shape=None, depth=29, cardinality=8, width=64, weight_decay=5e
                              'should be divisible by 9.')
 
     # Determine proper input shape
-    input_shape = preprocess_input(input_shape,
+    input_shape = _obtain_input_shape(input_shape,
                                       default_size=32,
                                       min_size=8,
                                       data_format=K.image_data_format(),
@@ -231,7 +231,7 @@ def ResNextImageNet(input_shape=None, depth=[3, 4, 6, 3], cardinality=32, width=
         raise ValueError('Depth of the network must be such that (depth - 2)'
                          'should be divisible by 9.')
     # Determine proper input shape
-    input_shape = preprocess_input(input_shape,
+    input_shape = _obtain_input_shape(input_shape,
                                       default_size=224,
                                       min_size=112,
                                       data_format=K.image_data_format(),
@@ -396,12 +396,12 @@ def __bottleneck_block(input, filters=64, cardinality=8, strides=1, weight_decay
 
     # Check if input number of filters is same as 16 * k, else create convolution2d for this input
     if K.image_data_format() == 'channels_first':
-        if init._keras_shape[1] != 2 * filters:
+        if init.shape[1] != 2 * filters:
             init = Conv2D(filters * 2, (1, 1), padding='same', strides=(strides, strides),
                           use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay))(init)
             init = BatchNormalization(axis=channel_axis)(init)
     else:
-        if init._keras_shape[-1] != 2 * filters:
+        if init.shape[-1] != 2 * filters:
             init = Conv2D(filters * 2, (1, 1), padding='same', strides=(strides, strides),
                           use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay))(init)
             init = BatchNormalization(axis=channel_axis)(init)
@@ -570,5 +570,6 @@ def __create_res_next_imagenet(nb_classes, img_input, include_top, depth, cardin
 
 
 if __name__ == '__main__':
-    model = ResNext((32, 32, 3), depth=29, cardinality=8, width=64)
+    #model = ResNext((32, 32, 3), depth=29, cardinality=8, width=64)
+    model = __create_res_next()
     model.summary()
