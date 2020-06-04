@@ -161,7 +161,7 @@ model.compile(loss="mse",
         experimental_run_tf_function=False)
 
 #================== Configure Callbacks ==================
-checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/First_try.h5", 
+checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/First_try3gpu.h5", 
         monitor = 'val_loss', mode = 'min',
         save_best_only=True
         )
@@ -188,7 +188,7 @@ if hvd.rank() == 0:
     callbacks.append(tensorboard_cb)
     callbacks.append(checkpoint_cb)
 #================== Training ==================
-history = model.fit(train_set, steps_per_epoch= 128 // BATCH_SIZE, epochs=500,
+history = model.fit(train_set, steps_per_epoch= 256 // BATCH_SIZE, epochs=100,
           validation_data=val_set,
           validation_steps=800 // 4,
           callbacks=callbacks,
