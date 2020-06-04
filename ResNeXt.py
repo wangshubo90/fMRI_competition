@@ -571,5 +571,6 @@ def __create_res_next_imagenet(nb_classes, img_input, include_top, depth, cardin
 
 if __name__ == '__main__':
     #model = ResNext((32, 32, 3), depth=29, cardinality=8, width=64)
-    model = __create_res_next()
-    model.summary()
+    input = keras.layers.Input(shape(128,128,3))
+    x = __create_res_next_imagenet(input)
+    model = Model(input, x)
