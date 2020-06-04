@@ -1,10 +1,13 @@
 # example of creating a CNN with an inception module
-from keras.models import Model
-from keras.layers import Input
-from keras.layers import Conv2D
-from keras.layers import MaxPooling2D
-from keras.layers.merge import concatenate
-from keras.utils import plot_model
+import tensorflow as tf 
+import pydot, graphviz
+from tensorflow import keras
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input
+from tensorflow.keras.layers import Conv2D
+from tensorflow.keras.layers import MaxPooling2D
+from tensorflow.keras.layers import concatenate
+from tensorflow.keras.utils import plot_model
 
 # function for creating a naive inception block
 def naive_inception_module(layer_in, f1, f2, f3):
