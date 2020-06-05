@@ -1,169 +1,135 @@
-from __future__ import print_function
-from __future__ import absolute_import
-from __future__ import division
-
-import warnings
-import tensorflow as tf
-from tensorflow import keras
+from functools import partial, reduce
+import tensorflow.keras as keras
+from tensorflow.keras.layers import Dense, Lambda, Conv3D
+from tensorflow.keras.layers import Activation, BatchNormalization
+from tensorflow.keras.layers import Input, concatenate, Add, Flatten
+from tensorflow.keras.layers import GlobalAveragePooling3D, GlobalMaxPooling3D, MaxPooling3D
+from tensorflow.keras.utils import plot_model
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, Lambda
-from tensorflow.keras.layers import Activation
-from tensorflow.keras.layers import Conv2D
-from tensorflow.keras.layers import GlobalAveragePooling2D, GlobalMaxPooling2D, MaxPooling2D
-from tensorflow.keras.layers import Input
-from tensorflow.keras.layers import concatenate, add
-from tensorflow.keras.layers import BatchNormalization
-from tensorflow.keras.regularizers import l2
-from tensorflow.keras.utils import convert_all_kernels_in_model
-from tensorflow.keras.utils import get_file
-from tensorflow.keras.utils import get_source_inputs
-import tensorflow.keras.backend as K
-'''
-from ResNeXt3D_blocks import __initial_conv_block
-from ResNeXt3D_blocks import __initial_conv_block_imagenet
-from ResNeXt3D_blocks import __grouped_convolution_block
-from ResNeXt3D_blocks import __bottleneck_block
-'''
-def __create_res_next(nb_classes, img_input, include_top, depth=29, cardinality=8, width=4,
-                      weight_decay=5e-4, pooling=None):
-    ''' Creates a ResNeXt model with specified parameters
-    Args:
-        nb_classes: Number of output classes
-        img_input: Input tensor or layer
-        include_top: Flag to include the last dense layer
-        depth: Depth of the network. Can be an positive integer or a list
-               Compute N = (n - 2) / 9.
-               For a depth of 56, n = 56, N = (56 - 2) / 9 = 6
-               For a depth of 101, n = 101, N = (101 - 2) / 9 = 11
-        cardinality: the size of the set of transformations.
-               Increasing cardinality improves classification accuracy,
-        width: Width of the network.
-        weight_decay: weight_decay (l2 norm)
-        pooling: Optional pooling mode for feature extraction
-            when `include_top` is `False`.
-            - `None` means that the output of the model will be
-                the 4D tensor output of the
-                last convolutional layer.
-            - `avg` means that global average pooling
-                will be applied to the output of the
-                last convolutional layer, and thus
-                the output of the model will be a 2D tensor.
-            - `max` means that global max pooling will
-                be applied.
-    Returns: a Keras Model
+
+def __default_conv3D(input, filters=8, kernel_size=3, strides=(1,1,1), weight_decay = 1e-4, **kwargs):
     '''
+    Description: set up defaut parameters for Conv3D layers
+    '''
+    DefaultConv3D = partial(
+        keras.layers.Conv3D, 
+        filters = filters,
+        kernel_size=kernel_size, 
+        strides=strides,
+        padding="SAME", 
+        use_bias=True, 
+        kernel_regularizer = keras.regularizers.l2(weight_decay),
+        kernel_initializer="he_normal",
+        **kwargs
+    )
+    return DefaultConv3D()(input)
 
-    if type(depth) is list or type(depth) is tuple:
-        # If a list is provided, defer to user how many blocks are present
-        N = list(depth)
-    else:
-        # Otherwise, default to 3 blocks each of default number of group convolution blocks
-        N = [(depth - 2) // 9 for _ in range(3)]
-
-    filters = cardinality * width
-    filters_list = []
-
-    for i in range(len(N)):
-        filters_list.append(filters)
-        filters *= 2  # double the size of the filters
-
-    x = __initial_conv_block(img_input, weight_decay)
-
-    # block 1 (no pooling)
-    for i in range(N[0]):
-        x = __bottleneck_block(x, filters_list[0], cardinality, strides=1, weight_decay=weight_decay)
-
-    N = N[1:]  # remove the first block from block definition list
-    filters_list = filters_list[1:]  # remove the first filter from the filter list
-
-    # block 2 to N
-    for block_idx, n_i in enumerate(N):
-        for i in range(n_i):
-            if i == 0:
-                x = __bottleneck_block(x, filters_list[block_idx], cardinality, strides=2,
-                                       weight_decay=weight_decay)
-            else:
-                x = __bottleneck_block(x, filters_list[block_idx], cardinality, strides=1,
-                                       weight_decay=weight_decay)
-
-    if include_top:
-        x = GlobalAveragePooling2D()(x)
-        x = Dense(nb_classes, use_bias=False, kernel_regularizer=l2(weight_decay),
-                  kernel_initializer='he_normal', activation='softmax')(x)
-    else:
-        if pooling == 'avg':
-            x = GlobalAveragePooling2D()(x)
-        elif pooling == 'max':
-            x = GlobalMaxPooling2D()(x)
+def __init_conv(input, filters=64, strides=(1,1,1), weight_decay=5e-4):
+    '''
+    Description: initial convolutional layers before ResNeXt block
+    Args:   input: input tensor
+            filters: number of filters
+            strides: strides, must be a tuple
+            weight_decay: parameter for l2 regularization
+    Return: output tensor
+    '''
+    
+    x = __default_conv3D(input, filters=filters, strides=strides, weight_decay=5e-4)
+    x = BatchNormalization(axis = -1)(x)
+    x = Activation('relu')(x)
+    x = MaxPooling3D(pool_size = (2,2,2))(x)
 
     return x
 
-def __create_res_next_imagenet(nb_classes, img_input, include_top, depth, cardinality=32, width=4,
-                               weight_decay=5e-4, pooling=None):
-    ''' Creates a ResNeXt model with specified parameters
-    Args:
-        nb_classes: Number of output classes
-        img_input: Input tensor or layer
-        include_top: Flag to include the last dense layer
-        depth: Depth of the network. List of integers.
-               Increasing cardinality improves classification accuracy,
-        width: Width of the network.
-        weight_decay: weight_decay (l2 norm)
-        pooling: Optional pooling mode for feature extraction
-            when `include_top` is `False`.
-            - `None` means that the output of the model will be
-                the 4D tensor output of the
-                last convolutional layer.
-            - `avg` means that global average pooling
-                will be applied to the output of the
-                last convolutional layer, and thus
-                the output of the model will be a 2D tensor.
-            - `max` means that global max pooling will
-                be applied.
-    Returns: a Keras Model
+def __bottleneck_layer(input, filters = 64, kernel_size = 3, strides = (1,1,1), cardinality = 16, weight_decay = 5e-4):
+    '''
+    Description: bottleneck layer for a single path(cardinality = 1)
+    Args:   input: input tensor
+            filters : number of filters for the last layer in a single path, suppose to be total number
+                        of filters // cardinality of ResNeXt block.
+            strides : strides, must be tuple of 3 elements
+    '''
+    x = input
+
+    x = __default_conv3D(x, filters = filters // 2 // cardinality, kernel_size = 1, strides = strides)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+
+    x = __default_conv3D(x, filters = filters // 2 // cardinality, kernel_size = kernel_size, strides = (1,1,1))
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+
+    x = __default_conv3D(x, filters = filters, kernel_size = 1, strides = (1,1,1))
+    x = BatchNormalization()(x)
+    
+    return x
+
+def __ResNeXt_block(input, filters = 64, kernel_size = 3, strides = (1,1,1), cardinality = 16, weight_decay = 5e-4):
+    '''
+    Description: refer to the ResNeXt architechture. One ResNeXt_block contains several paths (cardinality) of bottleneck layers joint by a skip connection.
     '''
 
-    if type(depth) is list or type(depth) is tuple:
-        # If a list is provided, defer to user how many blocks are present
-        N = list(depth)
-    else:
-        # Otherwise, default to 3 blocks each of default number of group convolution blocks
-        N = [(depth - 2) // 9 for _ in range(3)]
+    if strides[0] == 1:
+        init = input
+    elif strides[0] > 1:
+        init = __default_conv3D(input, filters = filters, kernel_size=kernel_size, strides=strides, weight_decay = weight_decay)
+        init = BatchNormalization()(init)
 
-    filters = cardinality * width
-    filters_list = []
+    x = [init]
+    
+    for i in range(cardinality):
+        x_sub = __bottleneck_layer(input, filters = filters, kernel_size=kernel_size, strides=strides, cardinality=cardinality, weight_decay=weight_decay)
+        x_sub = BatchNormalization()(x_sub)
+        x.append(x_sub)
 
-    for i in range(len(N)):
-        filters_list.append(filters)
-        filters *= 2  # double the size of the filters
-
-    x = __initial_conv_block_imagenet(img_input, weight_decay)
-
-    # block 1 (no pooling)
-    for i in range(N[0]):
-        x = __bottleneck_block(x, filters_list[0], cardinality, strides=1, weight_decay=weight_decay)
-
-    N = N[1:]  # remove the first block from block definition list
-    filters_list = filters_list[1:]  # remove the first filter from the filter list
-
-    # block 2 to N
-    for block_idx, n_i in enumerate(N):
-        for i in range(n_i):
-            if i == 0:
-                x = __bottleneck_block(x, filters_list[block_idx], cardinality, strides=2,
-                                       weight_decay=weight_decay)
-            else:
-                x = __bottleneck_block(x, filters_list[block_idx], cardinality, strides=1,
-                                       weight_decay=weight_decay)
-
-    if include_top:
-        x = GlobalAveragePooling2D()(x)
-        x = Dense(nb_classes, use_bias=False, kernel_regularizer=l2(weight_decay),
-                  kernel_initializer='he_normal', activation='softmax')(x)
-    else:
-        if pooling == 'avg':
-            x = GlobalAveragePooling2D()(x)
-        elif pooling == 'max':
-            x = GlobalMaxPooling2D()(x)
+    x = Add()(x)
+    x = Activation('relu')(x)
 
     return x
+
+def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_decay = 5e-4):
+    '''
+    Description:
+    Args:   input: input tf tensor
+            filters: filter numbers of initial convolutional layer and first chunk ResNeXt blocks. Filter number doubles there after
+            depth: a tuple of number of ResNeXt blocks for each step of feature map resolution.
+            cardinality: number of bottleneck layer paths
+            weight_decay: l2 regularization parameter
+    Return: output: output tf tensor
+    '''
+    N = len(depth)
+    filter_list = []
+    
+    for i in range(N):
+        filter_list.append(filters * (2**i))
+
+    x = __init_conv(input, filters=filters, strides=(1,1,1), weight_decay=weight_decay)
+
+    for dep, filters in zip(depth, filter_list):
+        for i in range(dep):
+            strides = (2,2,2) if i == 0 else (1,1,1)
+            x = __ResNeXt_block(x, filters = filters, strides=strides, cardinality = cardinality, weight_decay = weight_decay)
+
+    x = GlobalAveragePooling3D()(x)
+    x = Flatten()(x)
+    x = Dense(5)(x)
+    return x
+
+if __name__ == "__main__":
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        tf.config.experimental.set_memory_growth(gpus[0], True)
+    input = Input(shape = (53, 63, 52, 53), batch_size = 4, dtype = tf.float32)
+    output = create_model(input)
+    model = Model(input, output)
+
+    optimizer = keras.optimizers.RMSprop(0.001)
+    model.compile(loss="mse",
+        optimizer=optimizer,
+        metrics=["mse", "mae"],
+        experimental_run_tf_function=False)
+    x = np.zeros(shape = (4, 53, 63, 52, 53))
+    y = np.zeros(shape = (4,5))
+
+    model.fit(x,y,epochs = 3)
+    
