@@ -53,7 +53,7 @@ def __init_conv(input, filters=64, strides=(1,1,1), weight_decay=5e-4):
     Return: output tensor
     '''
     
-    x = __default_conv3D(input, filters=filters, strides=strides, weight_decay=5e-4)
+    x = __default_conv3D(input, filters=filters, strides=strides, weight_decay=weight_decay)
     x = BatchNormalization(axis = -1)(x)
     x = Activation('relu')(x)
     x = MaxPooling3D(pool_size = (2,2,2))(x)
@@ -70,15 +70,15 @@ def __bottleneck_layer(input, filters = 64, kernel_size = 3, strides = (1,1,1), 
     '''
     x = input
 
-    x = __default_conv3D(x, filters = filters // 2 // cardinality, kernel_size = 1, strides = strides)
+    x = __default_conv3D(x, filters = filters // 2 // cardinality, kernel_size = 1, strides = strides, weight_decay=weight_decay)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
 
-    x = __default_conv3D(x, filters = filters // 2 // cardinality, kernel_size = kernel_size, strides = (1,1,1))
+    x = __default_conv3D(x, filters = filters // 2 // cardinality, kernel_size = kernel_size, strides = (1,1,1), weight_decay=weight_decay)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
 
-    x = __default_conv3D(x, filters = filters, kernel_size = 1, strides = (1,1,1))
+    x = __default_conv3D(x, filters = filters, kernel_size = 1, strides = (1,1,1), weight_decay=weight_decay)
     x = BatchNormalization()(x)
     
     return x
@@ -131,14 +131,14 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
     
     x = GlobalAveragePooling3D()(x)
     x = Flatten()(x)
-    x = Dense(5)(x)
+    x = Dense(5, activation = 'linear', kernel_regularizer = keras.regularizers.l2(weight_decay))(x)
     return x
 
-input = Input(shape = (53, 63, 52, 53), batch_size = 8, dtype = tf.float32)
-output = create_model(input)
+input = Input(shape = (53, 63, 52, 53), dtype = tf.float32)
+output = create_model(input, weight_decay=5e-3)
 model = Model(input, output)
 
-optimizer = keras.optimizers.RMSprop(0.001)
+optimizer = keras.optimizers.RMSprop(0.001 * hvd.size())
 
 # set up Horovod
 optimizer = hvd.DistributedOptimizer(optimizer)
@@ -210,7 +210,7 @@ val_set = DatasetReader(val_f, val_label, 8, BATCH_SIZE // 2)
 evl_set = DatasetReader(evl_f, evl_label, 8, BATCH_SIZE // 2)
 
 #================== Configure Callbacks ==================
-checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_1gpu.h5", 
+checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_3gpu_linear_act.h5", 
         monitor = 'val_loss', mode = 'min',
         save_best_only=True
         )
@@ -219,7 +219,7 @@ class PrintValTrainRatioCallback(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs):
         print("\nval/train: {:.2f} \n".format(logs["val_loss"] / logs["loss"]))
 
-root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_1gpu")
+root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_3gpu_linear_act")
 
 def get_run_logdir(comment=""):
     import time
