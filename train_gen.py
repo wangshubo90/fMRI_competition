@@ -30,7 +30,7 @@ def normalize(img):
     img = (img - mean) / std
     img = img.transpose()
     return img
-
+'''
 def DataGenerator(file_list, y_list, shuffle_size, batch_size, random_seed = 42):
     random.seed(random_seed)
     def generator():
@@ -56,7 +56,7 @@ def DataGenerator(file_list, y_list, shuffle_size, batch_size, random_seed = 42)
                 yield np.array(x_batch), np.array(y_batch)
 
     return generator
-
+'''
 def DatasetReader(file_list, y_list, shuffle_size, batch_size, random_seed = 42):
     generator = DataGenerator(file_list, y_list, shuffle_size, batch_size, random_seed=random_seed)
     dataset = tf.data.Dataset.from_generator(
@@ -67,6 +67,45 @@ def DatasetReader(file_list, y_list, shuffle_size, batch_size, random_seed = 42)
     
     return dataset.prefetch(tf.data.experimental.AUTOTUNE)
 
+class DataGenerator(keras.utils.Sequence):
+    def __init__(self, file_list, y_list, shape = (53, 63, 52, 53), batch_size = 32):
+        self.file_list = file_list
+        self.y_list = y_list
+        self.batch_size = batch_size
+
+    def __len__(self):
+        return int(np.floor(len(self.file_list) / self.batch_size))
+
+    def __getitem__(self, index):
+        batch_file = self.file_list[index*self.batch_size:(index+1)*self.batch_size]
+        batch_y = self.y_list[index*self.batch_size:(index+1)*self.batch_size]
+
+        x, y = self.__data_generation(batch_file, batch_y)
+        return x, y
+    
+    def __data_generation(self, batch_file, batch_y):
+        'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
+        # Initialization
+        X = np.zeros(shape = (self.batch_size, 53, 63, 52, 53), dtype = np.float32)
+        y = np.zeros(shape = (self.batch_size, 5), dtype = np.float32)
+        # Generate data
+        for i, (file, _y) in enumerate(zip(batch_file, batch_y)):
+            # Store sample
+            x = pickle.load(open(file, 'rb'))
+            for j in range(x.shape[0]):
+                mean = np.mean(x[j,])
+                std = np.std(x[j,])
+                if std == 0.0:
+                    pass
+                else:
+                    x[j,] = ( x[j,] - mean ) / std
+            x = x.transpose()
+            # Store class
+            X[i,] = x
+
+            y[i,] = _y
+        
+        return X, y
 
 DATA_PATH = "../fMRI_train_pk"
 df = pd.read_csv("train_scores.csv")
@@ -93,9 +132,9 @@ val_f, evl_f, val_label, evl_label = train_test_split(
 )
 
 BATCH_SIZE = 16
-train_set = DataGenerator(train_f, train_label, 128, BATCH_SIZE)
-val_set = DataGenerator(val_f, val_label, 64, BATCH_SIZE )
-evl_set = DataGenerator(evl_f, evl_label, 64, BATCH_SIZE )
+train_set = DataGenerator(train_f, train_label, BATCH_SIZE)
+val_set = DataGenerator(val_f, val_label, BATCH_SIZE )
+evl_set = DataGenerator(evl_f, evl_label, BATCH_SIZE )
 
 #==================== Build model ====================
 DefaultConv3D = partial(keras.layers.Conv3D, kernel_size=3, strides=(1,)*3,
@@ -149,6 +188,7 @@ filters = (16, 32, 64)
 strides = (1, 2, 2)
 #(1,1,1)
 model = keras.models.Sequential()
+model.add(keras.layers.Input(shape = (53, 63, 52, 53), dtype = tf.float32))
 model.add(DefaultConv3D(filters[0], kernel_size=3, strides=(1,)*3,
         input_shape=[53, 63, 52, 53], kernel_initializer="he_normal"))
 model.add(keras.layers.BatchNormalization())
@@ -165,10 +205,10 @@ model.add(keras.layers.Dense(16, activation="relu", kernel_regularizer = keras.r
 #model.add(keras.layers.Dropout(0.5 ))
 model.add(keras.layers.Dense(5))
 optimizer = keras.optimizers.RMSprop(0.001)
-
+'''
 # set up Horovod
 optimizer = hvd.DistributedOptimizer(optimizer)
-
+'''
 model.compile(loss="mse",
         optimizer=optimizer,
         metrics=["mse", "mae"],
@@ -202,9 +242,10 @@ if hvd.rank() == 0:
     callbacks.append(tensorboard_cb)
     callbacks.append(checkpoint_cb)
 #================== Training ==================
-history = model.fit(train_set, steps_per_epoch= 128 // BATCH_SIZE, epochs=300,
+history = model.fit_generator(train_set, steps_per_epoch= 128 // BATCH_SIZE, epochs=300,
           validation_data=val_set,
           validation_steps=800 // BATCH_SIZE,
-          callbacks=callbacks,
-          verbose = 1 if hvd.rank() == 0 else 0
+          max_queue_size = 2,
+          workers = 2,
+          use_multiprocessing = True
          )
