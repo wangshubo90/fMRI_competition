@@ -117,7 +117,7 @@ x1 = Conv3D(128, 1, padding='same', activation='relu')(x1)
 x1 = Flatten()(x1)
 x1 = Dense(1024, activation='relu')(x1)
 x1 = Dropout(0.7)(x1)
-x1 = Dense(10, activation='softmax', name='auxilliary_output_1')(x1)
+x1 = Dense(5, activation='linear', name='auxilliary_output_1')(x1)
 
 x = inception_module(x,
                      filters_1x1=160,
@@ -152,7 +152,7 @@ x2 = Conv3D(128, 1, padding='same', activation='relu')(x2)
 x2 = Flatten()(x2)
 x2 = Dense(1024, activation='relu')(x2)
 x2 = Dropout(0.7)(x2)
-x2 = Dense(10, activation='softmax', name='auxilliary_output_2')(x2)
+x2 = Dense(5, activation='linear', name='auxilliary_output_2')(x2)
 
 x = inception_module(x,
                      filters_1x1=256,
@@ -187,7 +187,7 @@ x = GlobalAveragePooling3D(name='avg_pool_5_3x3/1')(x)
 
 x = Dropout(0.4)(x)
 
-x = Dense(5, activation='softmax', name='output')(x)
+x = Dense(5, activation='linear', name='output')(x)
 model = Model(input_layer, [x, x1, x2], name='inception_v1')
 model.summary()
 
@@ -202,6 +202,7 @@ optimizer = keras.optimizers.RMSprop(0.001 * hvd.size())
 optimizer = hvd.DistributedOptimizer(optimizer)
 
 model.compile(loss=['mse', 'mse', 'mse'],
+        loss_weights=[1, 0.3, 0.3],
         optimizer=optimizer,
         metrics=["mse", "mae"],
         experimental_run_tf_function=False)
@@ -296,8 +297,8 @@ if hvd.rank() == 0:
     callbacks.append(checkpoint_cb)
 
 #================== Training ==================
-history = model.fit(train_set[:,0],[train_set[:,1:4],train_set[:,1:4],train_set[:,1:4]], steps_per_epoch= 256 // BATCH_SIZE, epochs=100,
-          validation_data=val_set[:,0],[val_set[:,1:4],val_set[:,1:4],val_set[:,1:4]]
+history = model.fit(train_set[0],[train_set[1],train_set[1],train_set[1]], steps_per_epoch= 256 // BATCH_SIZE, epochs=100,
+          validation_data=val_set[0],[val_set[1],val_set[1],val_set[1]]
           validation_steps=800 // 4,
           callbacks=callbacks,
           verbose = 1 if hvd.rank() == 0 else 0
