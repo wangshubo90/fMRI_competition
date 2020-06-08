@@ -134,6 +134,7 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
     x = Dense(5, activation = 'linear', kernel_regularizer = keras.regularizers.l2(weight_decay))(x)
     return x
 
+<<<<<<< HEAD
 input = Input(shape = (53, 63, 52, 53), dtype = tf.float32)
 output = create_model(input,filters=128, cardinality=32, weight_decay=5e-3)
 model = Model(input, output)
@@ -148,11 +149,19 @@ model.compile(loss="mse",
         metrics=["mse", "mae"],
         experimental_run_tf_function=False)
 
+=======
+>>>>>>> origin/master
 #================= Build Data pipeline =================
 def normalize(img):
-    mean = np.mean(img)
-    std = np.std(img)
-    img = (img - mean) / std
+    shape = img.shape
+    for i in range(shape[0]):
+        map = img[i,:,:,:]
+        mean = np.mean(map)
+        std = np.std(map)
+        if std == 0.0:
+            pass
+        else:
+            img[i,:,:,:] = (map - mean) / std
     img = img.transpose()
     return img
 
@@ -210,7 +219,11 @@ val_set = DatasetReader(val_f, val_label, 8, BATCH_SIZE // 2)
 evl_set = DatasetReader(evl_f, evl_label, 8, BATCH_SIZE // 2)
 
 #================== Configure Callbacks ==================
+<<<<<<< HEAD
 checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_3gpu_linear_act_dep222_ft128_l25_e-3.h5", 
+=======
+checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_3gpu_linear_act_l2_5e-3_dep333.h5", 
+>>>>>>> origin/master
         monitor = 'val_loss', mode = 'min',
         save_best_only=True
         )
@@ -219,7 +232,11 @@ class PrintValTrainRatioCallback(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs):
         print("\nval/train: {:.2f} \n".format(logs["val_loss"] / logs["loss"]))
 
+<<<<<<< HEAD
 root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_3gpu_linear_act_dep222_ft128_l25_e-3")
+=======
+root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_3gpu_linear_act_l2_5e-3_dep333")
+>>>>>>> origin/master
 
 def get_run_logdir(comment=""):
     import time
@@ -238,7 +255,25 @@ if hvd.rank() == 0:
     callbacks.append(checkpoint_cb)
 
 #================== Training ==================
+<<<<<<< HEAD
 history = model.fit(train_set, steps_per_epoch= 256 // BATCH_SIZE, epochs=300,
+=======
+input = Input(shape = (53, 63, 52, 53), dtype = tf.float32)
+output = create_model(input, depth = (3,3,3), weight_decay=5e-2)
+model = Model(input, output)
+
+optimizer = keras.optimizers.RMSprop(0.001 * hvd.size())
+
+# set up Horovod
+optimizer = hvd.DistributedOptimizer(optimizer)
+
+model.compile(loss="mse",
+        optimizer=optimizer,
+        metrics=["mse", "mae"],
+        experimental_run_tf_function=False)
+
+history = model.fit(train_set, steps_per_epoch= 256 // BATCH_SIZE, epochs=100,
+>>>>>>> origin/master
           validation_data=val_set,
           validation_steps=800 // 4,
           callbacks=callbacks,
