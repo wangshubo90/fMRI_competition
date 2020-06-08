@@ -135,10 +135,10 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
     return x
 
 input = Input(shape = (53, 63, 52, 53), dtype = tf.float32)
-output = create_model(input, weight_decay=5e-3)
+output = create_model(input,filters=128, cardinality=32, weight_decay=5e-3)
 model = Model(input, output)
 
-optimizer = keras.optimizers.RMSprop(0.001 * hvd.size())
+optimizer = keras.optimizers.RMSprop(0.0003 * hvd.size())
 
 # set up Horovod
 optimizer = hvd.DistributedOptimizer(optimizer)
@@ -210,7 +210,7 @@ val_set = DatasetReader(val_f, val_label, 8, BATCH_SIZE // 2)
 evl_set = DatasetReader(evl_f, evl_label, 8, BATCH_SIZE // 2)
 
 #================== Configure Callbacks ==================
-checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_3gpu_linear_act.h5", 
+checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_3gpu_linear_act_dep222_ft128_l25_e-3.h5", 
         monitor = 'val_loss', mode = 'min',
         save_best_only=True
         )
@@ -219,7 +219,7 @@ class PrintValTrainRatioCallback(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs):
         print("\nval/train: {:.2f} \n".format(logs["val_loss"] / logs["loss"]))
 
-root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_3gpu_linear_act")
+root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_3gpu_linear_act_dep222_ft128_l25_e-3")
 
 def get_run_logdir(comment=""):
     import time
@@ -238,7 +238,7 @@ if hvd.rank() == 0:
     callbacks.append(checkpoint_cb)
 
 #================== Training ==================
-history = model.fit(train_set, steps_per_epoch= 256 // BATCH_SIZE, epochs=100,
+history = model.fit(train_set, steps_per_epoch= 256 // BATCH_SIZE, epochs=300,
           validation_data=val_set,
           validation_steps=800 // 4,
           callbacks=callbacks,
