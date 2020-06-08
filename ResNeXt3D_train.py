@@ -134,23 +134,6 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
     x = Dense(5, activation = 'linear', kernel_regularizer = keras.regularizers.l2(weight_decay))(x)
     return x
 
-<<<<<<< HEAD
-input = Input(shape = (53, 63, 52, 53), dtype = tf.float32)
-output = create_model(input,filters=128, cardinality=32, weight_decay=5e-3)
-model = Model(input, output)
-
-optimizer = keras.optimizers.RMSprop(0.0003 * hvd.size())
-
-# set up Horovod
-optimizer = hvd.DistributedOptimizer(optimizer)
-
-model.compile(loss="mse",
-        optimizer=optimizer,
-        metrics=["mse", "mae"],
-        experimental_run_tf_function=False)
-
-=======
->>>>>>> origin/master
 #================= Build Data pipeline =================
 def normalize(img):
     shape = img.shape

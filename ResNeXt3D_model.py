@@ -1,8 +1,9 @@
 from functools import partial, reduce
+import tensorflow as tf
 import tensorflow.keras as keras
 from tensorflow.keras.layers import Dense, Lambda, Conv3D
 from tensorflow.keras.layers import Activation, BatchNormalization
-from tensorflow.keras.layers import Input, concatenate, Add, Flatten
+from tensorflow.keras.layers import Input, concatenate, Add, Flatten, Reshape
 from tensorflow.keras.layers import GlobalAveragePooling3D, GlobalMaxPooling3D, MaxPooling3D
 from tensorflow.keras.utils import plot_model
 from tensorflow.keras.models import Model
@@ -38,6 +39,21 @@ def __init_conv(input, filters=64, strides=(1,1,1), weight_decay=5e-4):
     x = BatchNormalization(axis = -1)(x)
     x = Activation('relu')(x)
     x = MaxPooling3D(pool_size = (2,2,2))(x)
+
+    return x
+
+def __init_grouped_conv(input, filters = 128, strides = (1,1,1), weight_decay = 5e-4):
+    
+    init = __default_conv3D(input, filters = filters - input.shape[-1] * 2, strides=strides, weight_decay=weight_decay)
+    group_channel = [init]
+    for i in range(input.shape[-1]):
+        x = Lambda(lambda z:z[:, :, :, :, i])(input)
+        x = tf.keras.backend.expand_dims(x, -1)
+        x = __default_conv3D(x, filters = 2, strides = strides, weight_decay=weight_decay)
+        group_channel.append(x)
+    group_merge = concatenate(group_channel, axis = -1)
+    x = BatchNormalization()(group_merge)
+    x = Activation('relu')(x)
 
     return x
 
@@ -116,6 +132,7 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
     return x
 
 if __name__ == "__main__":
+    import numpy as np
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
         tf.config.experimental.set_memory_growth(gpus[0], True)
@@ -128,8 +145,8 @@ if __name__ == "__main__":
         optimizer=optimizer,
         metrics=["mse", "mae"],
         experimental_run_tf_function=False)
-    x = np.zeros(shape = (4, 53, 63, 52, 53))
-    y = np.zeros(shape = (4,5))
+    x = np.zeros(shape = (4, 53, 63, 52, 53), dtype = np.float32)
+    y = np.zeros(shape = (4,5), dtype = np.float32)
 
-    model.fit(x,y,epochs = 3)
+    #model.fit(x,y,epochs = 3)
     
