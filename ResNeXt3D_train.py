@@ -60,6 +60,21 @@ def __init_conv(input, filters=64, strides=(1,1,1), weight_decay=5e-4):
 
     return x
 
+def __init_grouped_conv(input, filters = 128, strides = (1,1,1), weight_decay = 5e-4):
+    
+    init = __default_conv3D(input, filters = filters - input.shape[-1] * 2, strides=strides, weight_decay=weight_decay)
+    group_channel = [init]
+    for i in range(input.shape[-1]):
+        x = Lambda(lambda z:z[:, :, :, :, i])(input)
+        x = tf.keras.backend.expand_dims(x, -1)
+        x = __default_conv3D(x, filters = 2, strides = strides, weight_decay=weight_decay)
+        group_channel.append(x)
+    group_merge = concatenate(group_channel, axis = -1)
+    x = BatchNormalization()(group_merge)
+    x = Activation('relu')(x)
+
+    return x
+    
 def __bottleneck_layer(input, filters = 64, kernel_size = 3, strides = (1,1,1), cardinality = 16, weight_decay = 5e-4):
     '''
     Description: bottleneck layer for a single path(cardinality = 1)
@@ -122,7 +137,7 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
     for i in range(N):
         filter_list.append(filters * (2**i))
 
-    x = __init_conv(input, filters=filters, strides=(1,1,1), weight_decay=weight_decay)
+    x = __init_grouped_conv(input, filters=filters, strides=(2,2,2), weight_decay=weight_decay)
 
     for dep, filters in zip(depth, filter_list):
         for i in range(dep):
@@ -202,11 +217,7 @@ val_set = DatasetReader(val_f, val_label, 8, BATCH_SIZE // 2)
 evl_set = DatasetReader(evl_f, evl_label, 8, BATCH_SIZE // 2)
 
 #================== Configure Callbacks ==================
-<<<<<<< HEAD
-checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_3gpu_linear_act_dep222_ft128_l25_e-3.h5", 
-=======
-checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_3gpu_linear_act_l2_5e-3_dep333.h5", 
->>>>>>> origin/master
+checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_3gpu_groupinit_car32_ft128_l2_5e-3_d222.h5", 
         monitor = 'val_loss', mode = 'min',
         save_best_only=True
         )
@@ -215,11 +226,7 @@ class PrintValTrainRatioCallback(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs):
         print("\nval/train: {:.2f} \n".format(logs["val_loss"] / logs["loss"]))
 
-<<<<<<< HEAD
-root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_3gpu_linear_act_dep222_ft128_l25_e-3")
-=======
-root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_3gpu_linear_act_l2_5e-3_dep333")
->>>>>>> origin/master
+root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_3gpu_groupinit_car32_ft128_l2_5e-3_d222")
 
 def get_run_logdir(comment=""):
     import time
@@ -238,11 +245,8 @@ if hvd.rank() == 0:
     callbacks.append(checkpoint_cb)
 
 #================== Training ==================
-<<<<<<< HEAD
-history = model.fit(train_set, steps_per_epoch= 256 // BATCH_SIZE, epochs=300,
-=======
 input = Input(shape = (53, 63, 52, 53), dtype = tf.float32)
-output = create_model(input, depth = (3,3,3), weight_decay=5e-2)
+output = create_model(input, filters = 128, cardinality=32, depth = (2,2,2), weight_decay=5e-3)
 model = Model(input, output)
 
 optimizer = keras.optimizers.RMSprop(0.001 * hvd.size())
@@ -256,7 +260,6 @@ model.compile(loss="mse",
         experimental_run_tf_function=False)
 
 history = model.fit(train_set, steps_per_epoch= 256 // BATCH_SIZE, epochs=100,
->>>>>>> origin/master
           validation_data=val_set,
           validation_steps=800 // 4,
           callbacks=callbacks,

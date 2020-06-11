@@ -119,7 +119,7 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
     for i in range(N):
         filter_list.append(filters * (2**i))
 
-    x = __init_conv(input, filters=filters, strides=(1,1,1), weight_decay=weight_decay)
+    x = __init_conv(input, filters=filters, strides=(2,2,2), weight_decay=weight_decay)
 
     for dep, filters in zip(depth, filter_list):
         for i in range(dep):
