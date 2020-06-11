@@ -134,10 +134,10 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
 if __name__ == "__main__":
     import numpy as np
     gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
-        tf.config.experimental.set_memory_growth(gpus[0], True)
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
     input = Input(shape = (53, 63, 52, 53), batch_size = 4, dtype = tf.float32)
-    output = create_model(input)
+    output = create_model(input, filters = 128)
     model = Model(input, output)
 
     optimizer = keras.optimizers.RMSprop(0.001)
@@ -147,6 +147,7 @@ if __name__ == "__main__":
         experimental_run_tf_function=False)
     x = np.zeros(shape = (4, 53, 63, 52, 53), dtype = np.float32)
     y = np.zeros(shape = (4,5), dtype = np.float32)
-
+    z = __init_grouped_conv(x, strides = (2,2,2))
     #model.fit(x,y,epochs = 3)
+    model.summary()
     
