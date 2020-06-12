@@ -164,24 +164,21 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
 
 def create_model_v2(input, filters = 8, weight_decay = 5e-4, dropout = 0.2):
     x = __init_split_conv(input, filters = filters)
-    
-    x = __default_conv3D(x, filters = 1024, strides=(2,2,2)), weight_decay = weight_decay)
+    x = __default_conv3D(x, filters = 1024, strides=(2,2,2), weight_decay = weight_decay)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
-    
     x = GlobalAveragePooling3D()(x)
     x = Flatten()(x)
-    
     y = []
+     
     for i in range(5):
         _y = Dense(128)(x)
-        _y = Dropout(droout)(_y)
+        _y = Dropout(dropout)(_y)
         _y = Dense(1)(_y)
-    
         y.append(_y)
-    
+     
     y = concatenate(y, axis = -1)
-    
+     
     return y
 
 
