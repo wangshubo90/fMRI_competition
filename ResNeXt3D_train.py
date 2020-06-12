@@ -11,7 +11,7 @@ import tensorflow as tf
 import tensorflow.keras as keras
 from tensorflow.keras.layers import Dense, Lambda, Conv3D
 from tensorflow.keras.layers import Activation, BatchNormalization
-from tensorflow.keras.layers import Input, concatenate, Add, Flatten
+from tensorflow.keras.layers import Input, concatenate, Add, Flatten, Dropout
 from tensorflow.keras.layers import GlobalAveragePooling3D, GlobalMaxPooling3D, MaxPooling3D
 from tensorflow.keras.utils import plot_model
 from tensorflow.keras.models import Model
@@ -146,6 +146,8 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
     
     x = GlobalAveragePooling3D()(x)
     x = Flatten()(x)
+    x = Dense(64, activation = 'relu', kernel_regularizer = keras.regularizers.l2(weight_decay))(x)
+    x = Dropout(0.3)(x)
     x = Dense(5, activation = 'linear', kernel_regularizer = keras.regularizers.l2(weight_decay))(x)
     return x
 
@@ -217,8 +219,8 @@ val_set = DatasetReader(val_f, val_label, 8, BATCH_SIZE // 2)
 evl_set = DatasetReader(evl_f, evl_label, 8, BATCH_SIZE // 2)
 
 #================== Configure Callbacks ==================
-checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_3gpu_groupinit_car32_ft128_l2_5e-3_d222.h5", 
-        monitor = 'val_loss', mode = 'min',
+checkpoint_cb = keras.callbacks.ModelCheckpoint("./my_logs/ResNeXt_3gpu_groupinit_l2_5e-3_dep222_dropout.h5", 
+        monitor = 'val_mse', mode = 'min',
         save_best_only=True
         )
 
@@ -226,7 +228,7 @@ class PrintValTrainRatioCallback(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs):
         print("\nval/train: {:.2f} \n".format(logs["val_loss"] / logs["loss"]))
 
-root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_3gpu_groupinit_car32_ft128_l2_5e-3_d222")
+root_logdir = os.path.join(os.curdir, "./my_logs/ResNeXt_3gpu_groupinit_l2_5e-3_dep222_dropout")
 
 def get_run_logdir(comment=""):
     import time
@@ -246,7 +248,7 @@ if hvd.rank() == 0:
 
 #================== Training ==================
 input = Input(shape = (53, 63, 52, 53), dtype = tf.float32)
-output = create_model(input, filters = 128, cardinality=32, depth = (2,2,2), weight_decay=5e-3)
+output = create_model(input, filters = 128, depth = (2,2,2), weight_decay=5e-4)
 model = Model(input, output)
 
 optimizer = keras.optimizers.RMSprop(0.001 * hvd.size())
@@ -259,7 +261,7 @@ model.compile(loss="mse",
         metrics=["mse", "mae"],
         experimental_run_tf_function=False)
 
-history = model.fit(train_set, steps_per_epoch= 256 // BATCH_SIZE, epochs=100,
+history = model.fit(train_set, steps_per_epoch= 256 // BATCH_SIZE, epochs=150,
           validation_data=val_set,
           validation_steps=800 // 4,
           callbacks=callbacks,

@@ -3,7 +3,7 @@ import tensorflow as tf
 import tensorflow.keras as keras
 from tensorflow.keras.layers import Dense, Lambda, Conv3D
 from tensorflow.keras.layers import Activation, BatchNormalization
-from tensorflow.keras.layers import Input, concatenate, Add, Flatten, Reshape
+from tensorflow.keras.layers import Input, concatenate, Add, Flatten, Reshape, Dropout
 from tensorflow.keras.layers import GlobalAveragePooling3D, GlobalMaxPooling3D, MaxPooling3D
 from tensorflow.keras.utils import plot_model
 from tensorflow.keras.models import Model
@@ -49,8 +49,39 @@ def __init_grouped_conv(input, filters = 128, strides = (1,1,1), weight_decay = 
     for i in range(input.shape[-1]):
         x = Lambda(lambda z:z[:, :, :, :, i])(input)
         x = tf.keras.backend.expand_dims(x, -1)
-        x = __default_conv3D(x, filters = 2, strides = strides, weight_decay=weight_decay)
+        x = __default_conv3D(x, filters = filters, strides = strides, weight_decay=weight_decay)
         group_channel.append(x)
+
+    group_merge = concatenate(group_channel, axis = -1)
+    x = BatchNormalization()(group_merge)
+    x = Activation('relu')(x)
+
+    return x
+
+def __init_split_conv(input, filters = 8, strides = (1,1,1), weight_decay = 5e-4):
+    
+    group_channel = []
+    for i in range(input.shape[-1]):
+        x = Lambda(lambda z:z[:, :, :, :, i])(input)
+        x = tf.keras.backend.expand_dims(x, -1)
+        x = __default_conv3D(x, filters = filters, strides = strides, weight_decay=weight_decay)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        
+        x_orig = __default_conv3D(x, kernel_size=1, filters = filters, strides = (2,2,2), weight_decay=weight_decay)
+
+        x = __default_conv3D(x, kernel_size=1, filters = filters // 2, strides = (2,2,2), weight_decay=weight_decay)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+
+        x = __default_conv3D(x, kernel_size=3, filters = filters, strides = (1,1,1), weight_decay=weight_decay)     
+
+        x = x + x_orig
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)  
+
+        group_channel.append(x)
+
     group_merge = concatenate(group_channel, axis = -1)
     x = BatchNormalization()(group_merge)
     x = Activation('relu')(x)
@@ -131,13 +162,37 @@ def create_model(input, filters = 64, depth = (2,2,2), cardinality = 16, weight_
     x = Dense(5)(x)
     return x
 
+def create_model_v2(input, filters = 8, weight_decay = 5e-4, dropout = 0.2):
+    x = __init_split_conv(input, filters = filters)
+    
+    x = __default_conv3D(x, filters = 1024, strides=(2,2,2)), weight_decay = weight_decay)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    
+    x = GlobalAveragePooling3D()(x)
+    x = Flatten()(x)
+    
+    y = []
+    for i in range(5):
+        _y = Dense(128)(x)
+        _y = Dropout(droout)(_y)
+        _y = Dense(1)(_y)
+    
+        y.append(_y)
+    
+    y = concatenate(y, axis = -1)
+    
+    return y
+
+
+
 if __name__ == "__main__":
     import numpy as np
     gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
-        tf.config.experimental.set_memory_growth(gpus[0], True)
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
     input = Input(shape = (53, 63, 52, 53), batch_size = 4, dtype = tf.float32)
-    output = create_model(input)
+    output = create_model(input, filters = 128)
     model = Model(input, output)
 
     optimizer = keras.optimizers.RMSprop(0.001)
@@ -145,8 +200,9 @@ if __name__ == "__main__":
         optimizer=optimizer,
         metrics=["mse", "mae"],
         experimental_run_tf_function=False)
-    x = np.zeros(shape = (4, 53, 63, 52, 53), dtype = np.float32)
-    y = np.zeros(shape = (4,5), dtype = np.float32)
-
+    x = tf.constant(np.zeros(shape = (8, 53, 63, 52, 53), dtype = np.float32))
+    y = tf.constant(np.zeros(shape = (8,5), dtype = np.float32))
+    z = __init_grouped_conv(x, strides = (2,2,2))
     #model.fit(x,y,epochs = 3)
+    #model.summary()
     
