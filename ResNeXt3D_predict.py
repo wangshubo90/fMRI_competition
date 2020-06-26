@@ -7,9 +7,10 @@ from tqdm import tqdm
 import os
 from tensorflow.keras.models import Model
 import gc
+from progress.bar import IncrementalBar
 
-model = keras.models.load_model('./my_logs/ResNeXt_grouped128_dep22_w5-3_no_dropout_retry_NADAM_dep222_car32.h5')
-new_model = Model(model.input, outputs = model.layers[-3].output)
+model = keras.models.load_model('./my_logs/multimodal/ResNeXt_ft128_dep22_w5-4_car16_norm_110.h5')
+#new_model = Model(model.input, outputs = model.layers[-3].output)
 
 def normalize_channel(img):
     shape = img.shape
@@ -37,24 +38,34 @@ df = df.dropna().reset_index()
 file_ls = []
 y_ls = np.zeros(shape = (df.shape[0], 5))
 
+loading_np = pickle.load(open('loading.pk', 'rb'))
+fnc_np = pickle.load(open('fnc.pk', 'rb'))
+
 for idx, row in df.iterrows():
     file_ls.append(os.path.join(DATA_PATH, str(int(row["Id"]))+".pk"))
     ys = row[2:].values
     y_ls[idx] = ys
 
-y_pred = np.zeros(shape = (len(file_ls), 512), dtype = np.float32)
+y_pred = np.zeros(shape = (len(file_ls), 5), dtype = np.float32)
 i = 0
+
+bar = IncrementalBar('Countdown', max = len(file_ls))
+
 #for file in tqdm(file_ls):
-for file in file_ls:
+for file, load, fnc in zip(file_ls, loading_np, fnc_np):
     f = None
     with open(file, 'rb') as f:
         img = pickle.load(f)
     
-    img = normalize_channel(img)
-    y = new_model.predict(img[np.newaxis])
+    img = normalize(img)
+    y = model.predict((img[np.newaxis], load.reshape((1,26)), fnc.reshape((1,1383))))
     y_pred[i] = np.squeeze(y)
     i += 1
+    print(i / len(loading_np * 100))
+    bar.next()
     gc.collect()
+
+bar.finish()
 '''
 with open('features_512.pk', 'wb') as f:
     pickle.dump(y_pred, f)
